@@ -1,0 +1,240 @@
+#!/bin/bash
+
+# read configuration
+config_file=${WEATHER_CONFIG}
+appid=$(grep 'appid' $config_file | cut -d : -f 2 )
+location=$(grep 'location' $config_file | cut -d : -f 2 )
+lang=$(grep 'lang' $config_file | cut -d : -f 2)
+unit=$(grep 'units' $config_file | cut -d : -f 2)
+
+sun=$(grep 'sun' $config_file | cut -d : -f 2)
+moon=$(grep 'moon' $config_file | cut -d : -f 2)
+clouds=$(grep 'clouds' $config_file | cut -d : -f 2)
+rain=$(grep 'rain' $config_file | cut -d : -f 2)
+fog=$(grep 'fog' $config_file | cut -d : -f 2)
+mist=$(grep 'mist' $config_file | cut -d : -f 2)
+haze=$(grep 'haze' $config_file | cut -d : -f 2)
+snow=$(grep 'snow' $config_file | cut -d : -f 2)
+thunderstorm=$(grep 'thunderstorm' $config_file | cut -d : -f 2)
+
+#获取对应天气的图标
+get_icons (){
+	local sky=$1
+	case $sky in
+		Clear)	if [[ -n $sunrise && -n sunset ]]; then
+					now=$(date +%s)
+					if [[ $now -ge $sunrise && $now -lt sunset ]]; then
+						echo "$sun"
+					else
+						echo "$moon"
+					fi
+				else
+					echo "$sun"
+				fi
+				;;
+		Clouds)
+			echo "$clouds"
+			;;
+		Rain)
+			echo "$rain"
+			;;
+		Fog)
+			echo "$fog"
+			;;
+		Mist)
+			echo "$mist"
+			;;
+		Haze)
+			echo "$haze"
+			;;
+		Snow)
+			echo "$snow"
+			;;
+		Thunderstorm)
+			echo "$thunderstorm"
+			;;
+	esac
+
+}
+
+get_curwea () {
+	# get weather data from OpenWeatherMap
+	current_data=$(curl -s "api.openweathermap.org/data/2.5/weather?q=${location}&lang=${lang}&units=${unit}&appid=${appid}" | cat)
+	if [[ -n current_data ]]; then
+		# parse json
+		sky=$(echo $current_data | jq '.weather[0].main')
+		sky=$(echo "${sky}" | sed 's/\"//g')
+		city=$(echo $current_data | jq '.name' )
+		city=$(echo "${city}" | sed 's/\"//g')
+		description=$(echo ${current_data} | jq '.weather[0].description')
+		description=$(echo "${description}" | sed 's/\"//g')
+		temperature=$(echo ${current_data} | jq '.main.temp')
+		temp_min=$(echo ${current_data} | jq '.main.temp_min')
+		temp_max=$(echo ${current_data} | jq '.main.temp_max')
+		wind=$(echo ${current_data} | jq '.wind.speed')
+		sunrise=$(echo ${current_data} | jq '.sys.sunrise')
+		sunset=$(echo ${current_data} | jq '.sys.sunset')
+	else
+		echo "ERROR:获取当前温度失败！"
+		exit 1
+	fi
+	return 
+}
+
+# print current weather
+
+print_curwea (){
+	if [[ -n ${current_data} ]]; then
+		local icon=$(get_icons ${sky})
+		echo $(date +'当前时间: %Y/%m/%d %H:%M:%S')
+		echo "城市: ${city}"
+		printf "天气: ${description} 　${icon} \n"
+		echo "温度: ${temperature} ℃"
+		echo "最低温度: ${temp_min} ℃"
+		echo "最高温度: ${temp_max} ℃"
+		echo "风速: ${wind}"
+	else
+		echo "ERROR:无法获取当前时间的温度数据"
+		exit 1
+	fi
+	return
+}
+
+get_forecastwea (){
+	forecast_weather=$(curl -s "api.openweathermap.org/data/2.5/forecast?q=${location}&lang=${lang}&units=${unit}&appid=${appid}" | cat)
+}
+
+declare -a oneday_result
+
+#获取指定日期的数据，把指定日期的　index 保存到 oneday_result 数组中
+get_oneday (){
+	day_date=$(date -d +${1}day +%Y-%m-%d)
+	index=0
+	count=0
+	while [[ true ]]; do
+		local temp_date=$(echo ${forecast_weather} | jq ".list[${index}].dt_txt" | cut -d " " -f 1)
+		if [[  ${temp_date} =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]]; then
+			#去除引号
+			temp_date=${temp_date:1}
+			if [[ temp_date -eq day_date ]]; then
+				oneday_result[${count}]=$index
+				count=$((count+1))
+			fi
+			index=$((index+1))
+		else
+			break;
+		fi
+	done
+	return
+}
+
+print_oneday (){
+	if [[ ${#oneday_result[@]} -gt 0 ]]; then
+		echo "---------------------------------------------------"
+		printf "%-10s %-10s %-6s %-8s %-6s\n" "时间" "天气" "图标" "温度" "风速"
+		local max=-1
+		local min=10000
+		local temp_sum=0
+		local day=$(echo ${forecast_weather} | jq ".list[${oneday_result[0]}].dt_txt" | cut -d " " -f 1)
+		day=${day:1}
+		local city=$(echo ${forecast_weather} | jq ".city.name")
+		city=$(echo "${city}" | sed 's/\"//g')
+		for i in ${oneday_result[@]}; do
+			local oneday_sky=$(echo $forecast_weather | jq ".list[$i].weather[0].main")
+			oneday_sky=$(echo "${oneday_sky}" | sed 's/\"//g')
+			local icon=$(get_icons ${oneday_sky})
+			local oneday_time=$(echo ${forecast_weather} | jq ".list[$i].dt_txt" | cut -d " " -f 2)
+			oneday_time=${oneday_time:0:8}					
+			local oneday_description=$(echo ${forecast_weather} | jq ".list[$i].weather[0].description")
+			oneday_description=$(echo "${oneday_description}" | sed 's/\"//g')
+			local temp=$(echo ${forecast_weather} | jq ".list[$i].main.temp")
+			local temp_max=$(echo ${forecast_weather} | jq ".list[$i].main.temp_max")
+			local temp_min=$(echo ${forecast_weather} | jq ".list[$i].main.temp_min")
+			local wind_speed=$(echo ${forecast_weather} | jq ".list[$i].wind.speed")
+			if [[ -n temp_max && ( $(echo "$temp_max <= $max" | bc) -eq 0 ) ]]; then
+				max=${temp_max}
+			fi
+			if [[ -n temp_min && ( $(echo "$temp_min >= $min" | bc) -eq 0 ) ]]; then
+				min=${temp_min}
+			fi
+			if [[ -n temp ]];then
+				temp_sum=$(echo "$temp_sum + $temp" | bc)
+			fi
+			local icon=$(get_icons ${oneday_sky})
+			printf "%-6s %-10s %-6b    %-6s %-6s\n" "$oneday_time" "$oneday_description" "$icon" "$temp" "$wind_speed"
+		done
+		echo "-----------------"
+		echo "日期：${day}"
+		echo "城市：${city}"
+		if [[ $(echo "${temp_sum} > 0" | bc) ]]; then 
+			local temp_avg=$(echo "scale=2;${temp_sum} / ${#oneday_result[@]}" | bc)
+			echo "平均温度：$temp_avg"
+		fi
+		if [[ $(echo "${max} > -1" | bc) ]]; then
+			echo "最高温度：${max}"
+		fi
+		if [[ $(echo "${min} < 10000" | bc) ]]; then
+			echo "最低温度：${min}"
+		fi
+	fi
+	return 
+}
+
+info_alldaywea (){
+	get_forecastwea
+	for i in {1..5} ; do
+		get_oneday $i
+		print_oneday 
+	done
+	return
+}
+
+info_curwea (){
+	get_curwea
+	print_curwea
+}
+
+info_onewea (){
+	get_forecastwea
+	get_oneday $1
+	print_oneday
+}
+
+usage (){
+	cat <<-_EOF_
+	用法: weather [options]
+	选项有 :
+		-l 指定地点
+		-c 显示当前时间的天气
+		-f 指定显示未来某一天的天气
+		-F 显示未来5天（包括今天）的天气
+		-u 显示用法
+	_EOF_
+}
+
+#如果没有命令行选项则默认是查询当前天气
+if [[ $# -eq 0 ]]; then 
+	info_curwea
+else
+	#获取命令行选项
+	while getopts :l:cf:F OPTION
+	do
+		case $OPTION in
+			l)	location=$OPTARG
+				;;
+			c)	info_curwea
+				;;
+			f)	if [[ $OPTARG -ge 5 ]]; then
+					echo "ERROR: 超出预测范围"
+				else
+					info_onewea $OPTARG
+				fi
+				;;
+			F)	info_alldaywea
+				;;
+			\?) usage
+				;;
+		esac
+	done
+fi
+

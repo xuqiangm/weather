@@ -1,0 +1,17 @@
+# this is the configuration of weather
+
+appid:6e2301ce2140a9864ba0b4e8c181d078
+location:NanJing,CN
+lang:zh_cn
+units:metric
+
+#icons
+sun:\033[33;1m\xe2\x98\x80\033[0m
+moon:\033[36m\xe2\x98\xbd\033[0m
+clouds:\033[37;1m\xe2\x98\x81\033[0m
+rain:\033[37;1m\xe2\x98\x94\033[0m
+fog:\033[37;1m\xe2\x96\x92\033[0m
+mist:\033[34m\xe2\x96\x91\033[0m
+haze:\033[33m\xe2\x96\x91\033[0m
+snow:\033[37;1m\xe2\x9d\x84\033[0m
+thunderstorm:\033[33;1m\xe2\x9a\xa1\033[0m
