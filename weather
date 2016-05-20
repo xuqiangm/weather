@@ -17,6 +17,18 @@ haze=$(grep 'haze' $config_file | cut -d : -f 2)
 snow=$(grep 'snow' $config_file | cut -d : -f 2)
 thunderstorm=$(grep 'thunderstorm' $config_file | cut -d : -f 2)
 
+#检查是否安装了 jq 和 bc 
+jqpath=$(which jq)
+if [[ -z "$jqpath" ]]; then
+	echo "ERROR: 没有安装 jq"
+	exit 1
+fi
+bcpath=$(which bc)
+if [[ -z "$bcpath" ]]; then
+	echo "ERROR: 没有安装 bc"
+	exit 1
+fi
+
 #获取对应天气的图标
 get_icons (){
 	local sky=$1
